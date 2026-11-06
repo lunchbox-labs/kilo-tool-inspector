@@ -151,10 +151,17 @@ export function descriptionSummary(description: string | undefined): string {
     : firstLine;
 }
 
-/** The number of top-level input properties, or undefined when the schema has none to count. */
+/**
+ * The number of top-level input properties, or undefined when the schema has none to count, such
+ * as a union beside empty `properties`.
+ */
 export function inputCount(parameters: unknown): number | undefined {
   if (!isRecord(parameters) || !isRecord(parameters.properties)) {
     return undefined;
   }
-  return Object.keys(parameters.properties).length;
+  const count = Object.keys(parameters.properties).length;
+  return count === 0 &&
+    (parameters.anyOf !== undefined || parameters.oneOf !== undefined)
+    ? undefined
+    : count;
 }
