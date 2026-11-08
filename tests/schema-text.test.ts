@@ -85,6 +85,37 @@ test("unions, nullable types and maps read as their alternatives", () => {
   );
 });
 
+test("tuples list their element types, then the type of any further elements", () => {
+  assert.equal(
+    render({
+      type: "object",
+      properties: {
+        point: {
+          type: "array",
+          prefixItems: [{ type: "number" }, { type: "string" }],
+        },
+        rest: {
+          type: "array",
+          prefixItems: [{ type: "string" }],
+          items: { type: "number" },
+        },
+        legacy: {
+          type: "array",
+          items: [{ type: "boolean" }],
+          additionalItems: { type: "string" },
+        },
+        empty: { type: "array", items: [] },
+      },
+    }),
+    [
+      "point  tuple of number, string",
+      "rest  tuple of string, then numbers",
+      "legacy  tuple of boolean, then strings",
+      "empty  array",
+    ].join("\n"),
+  );
+});
+
 test("local references are followed and recursive ones are named instead of expanded", () => {
   assert.equal(
     render({
@@ -107,6 +138,194 @@ test("local references are followed and recursive ones are named instead of expa
       "  A tree node",
       "  name  string",
       "  children  array of Nodes",
+      "    Same fields as root.",
+    ].join("\n"),
+  );
+});
+
+test("references into $defs resolve under definitions, as OpenCode serves zod tools", () => {
+  // OpenCode 1.19 renames zod's `$defs` to `definitions` but leaves the references as they were.
+  assert.equal(
+    render({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        home: { $ref: "#/$defs/Address" },
+        work: { $ref: "#/$defs/Address" },
+        tree: { $ref: "#/$defs/__schema0" },
+      },
+      required: ["home", "tree"],
+      definitions: {
+        Address: {
+          id: "Address",
+          type: "object",
+          properties: { street: { type: "string" }, city: { type: "string" } },
+          required: ["street", "city"],
+        },
+        __schema0: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            children: { type: "array", items: { $ref: "#/$defs/__schema0" } },
+          },
+          required: ["name", "children"],
+        },
+      },
+    }),
+    [
+      "home  object, required",
+      "  street  string, required",
+      "  city  string, required",
+      "work  object",
+      "  Same fields as home.",
+      "tree  object, required",
+      "  name  string, required",
+      "  children  array of objects, required",
+      "    Same fields as tree.",
+    ].join("\n"),
+  );
+  assert.equal(
+    render({
+      type: "object",
+      properties: { point: { $ref: "#/definitions/Point" } },
+      $defs: {
+        Point: { type: "object", properties: { x: { type: "number" } } },
+      },
+    }),
+    ["point  object", "  x  number"].join("\n"),
+  );
+});
+
+test("a definition that only refers to another is followed, and a loop of them ends", () => {
+  assert.equal(
+    render({
+      type: "object",
+      properties: {
+        location: { $ref: "#/$defs/Location", description: "Where to look" },
+        loop: { $ref: "#/$defs/A" },
+      },
+      $defs: {
+        Location: { $ref: "#/$defs/Place" },
+        Place: { type: "object", properties: { name: { type: "string" } } },
+        A: { $ref: "#/$defs/B" },
+        B: { $ref: "#/$defs/A" },
+      },
+    }),
+    ["location  object", "  Where to look", "  name  string", "loop  A"].join(
+      "\n",
+    ),
+  );
+});
+
+test("recursive zod schemas with generated names say what they are, not always object", () => {
+  const recursive = (field: string, definition: unknown) => ({
+    type: "object",
+    properties: { [field]: { $ref: "#/$defs/__schema0" } },
+    required: [field],
+    definitions: { __schema0: definition },
+  });
+  const self = { $ref: "#/$defs/__schema0" };
+  assert.equal(
+    render(
+      recursive("value", {
+        anyOf: [
+          { type: "string" },
+          { type: "number" },
+          { type: "null" },
+          { type: "array", items: self },
+          {
+            type: "object",
+            propertyNames: { type: "string" },
+            additionalProperties: self,
+          },
+        ],
+      }),
+    ),
+    "value  string | number | null | array of items of same type as value | object with same type as value values, required",
+  );
+  assert.equal(
+    render(recursive("list", { type: "array", items: self })),
+    "list  array of arrays, required",
+  );
+  assert.equal(
+    render(
+      recursive("expr", {
+        anyOf: [
+          {
+            type: "object",
+            properties: { args: { type: "array", items: self } },
+          },
+          { type: "object", properties: { value: { type: "number" } } },
+        ],
+      }),
+    ),
+    [
+      "expr  object, required",
+      "  Option 1",
+      "    args  array of objects",
+      "      Same fields as expr.",
+      "  Option 2",
+      "    value  number",
+    ].join("\n"),
+  );
+});
+
+test("long chains of definitions that only refer to another say the chain is too long", () => {
+  const length = 20_000;
+  const definitions: Record<string, unknown> = {
+    [`D${length}`]: { type: "string" },
+  };
+  for (let index = 0; index < length; index++) {
+    definitions[`D${index}`] = { $ref: `#/definitions/D${index + 1}` };
+  }
+  const started = performance.now();
+  const text = render({
+    type: "object",
+    properties: { x: { $ref: "#/definitions/D0" } },
+    definitions,
+  });
+  assert.ok(performance.now() - started < 2_000);
+  assert.equal(text, "x  reference chain too long");
+});
+
+test("a definition reached as both $defs and definitions is listed once", () => {
+  assert.equal(
+    render({
+      type: "object",
+      properties: {
+        home: { $ref: "#/$defs/Address" },
+        work: { $ref: "#/definitions/Address" },
+      },
+      definitions: {
+        Address: { type: "object", properties: { city: { type: "string" } } },
+      },
+    }),
+    [
+      "home  object",
+      "  city  string",
+      "work  object",
+      "  Same fields as home.",
+    ].join("\n"),
+  );
+});
+
+test("references that name nothing say so instead of showing any", () => {
+  assert.equal(
+    render({
+      type: "object",
+      properties: {
+        missing: { $ref: "#/$defs/Missing" },
+        remote: {
+          type: "array",
+          items: { $ref: "https://example.com/tag.json" },
+        },
+        typed: { $ref: "#/$defs/Missing", type: "string" },
+      },
+    }),
+    [
+      "missing  unresolved reference Missing",
+      "remote  array of items of unresolved reference tag.json",
+      "typed  string",
     ].join("\n"),
   );
 });
@@ -195,7 +414,7 @@ test("malformed or odd schema parts render instead of throwing", () => {
       },
     }),
     [
-      "broken  any",
+      "broken  unresolved reference %E0%A4%A",
       "nothing  never",
       "untyped  any",
       'code  string, pattern "^\\d+\\nb$"',
@@ -295,6 +514,22 @@ test("references that fan out list each level once instead of every path", () =>
   assert.ok(lines.length < 200, `${lines.length} lines`);
   assert.match(text, /^ {4}f1 {2}object\n {6}Same fields as query\.f0\.f0\.$/m);
   assert.doesNotMatch(text, /Schema too large/);
+});
+
+test("zod-style references that fan out stay bounded once they resolve", () => {
+  const definitions: unknown = JSON.parse(
+    JSON.stringify(fannedOutDefinitions(8, 10)).replaceAll(
+      "#/definitions/",
+      "#/$defs/",
+    ),
+  );
+  const lines = schemaLines({
+    type: "object",
+    properties: { query: { $ref: "#/$defs/D0" } },
+    definitions,
+  });
+  assert.ok(lines.length < 200, `${lines.length} lines`);
+  assert.match(linesText(lines), /Same fields as query\.f0\./);
 });
 
 test("a shared definition first listed past the depth limit is listed in full where there's room", () => {

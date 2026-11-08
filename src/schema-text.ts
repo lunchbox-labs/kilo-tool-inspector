@@ -39,6 +39,8 @@ interface Rendering {
   listedDefinitions: Map<string, DefinitionListing>;
   /** How often the depth limit has cut a listing or type short. */
   depthCutoffs: number;
+  /** The first field that refers to each definition, by its reference. */
+  typedFields: Map<string, string>;
   /** Merged `allOf` schemas that left out members nested too deeply to follow. */
   cutMerges: WeakSet<JsonObject>;
 }
@@ -195,43 +197,111 @@ interface Resolved {
   definition?: string;
   /** The reference that points back into a definition being expanded, if this node is one. */
   recursiveReference?: string;
+  /** The reference that names nothing in the schema, if this node has one. */
+  unresolvedReference?: string;
+  /** Whether resolving stopped because definitions referred onward too many times. */
+  chainTooLong?: boolean;
 }
 
-/** Resolves local `$ref`s, as zod and MCP servers emit for shared definitions. */
-function resolveReference(
-  node: JsonObject,
-  rendering: Rendering,
-  visiting: ReadonlySet<string>,
-): Resolved {
-  rendering.remainingLookups--;
-  if (rendering.remainingLookups < 0) {
-    throw new SchemaTooLarge();
-  }
-  const reference = node.$ref;
-  if (typeof reference !== "string" || !reference.startsWith("#")) {
-    return { node, visiting };
-  }
-  if (visiting.has(reference)) {
-    return { node, visiting, recursiveReference: reference };
-  }
-  let target: unknown = rendering.root;
+/** The value a local JSON pointer such as `#/$defs/Address` names, if any. */
+function pointerTarget(root: JsonObject, reference: string): unknown {
+  let target: unknown = root;
   for (const rawKey of reference.slice(1).split("/").filter(Boolean)) {
     const key = decodedPointerKey(rawKey)
       .replaceAll("~1", "/")
       .replaceAll("~0", "~");
     target = isObject(target) ? target[key] : undefined;
   }
-  if (!isObject(target)) {
+  return target;
+}
+
+const definitionSections = ["#/$defs/", "#/definitions/"];
+
+/**
+ * The schema a local reference names, and the reference as the schema spells it. OpenCode 1.19
+ * renames zod's `$defs` to `definitions` without rewriting the references to them, so a miss
+ * under either name is retried under the other.
+ */
+function referenceTarget(
+  root: JsonObject,
+  reference: string,
+): { schema: JsonObject; reference: string } | undefined {
+  const target = pointerTarget(root, reference);
+  if (isObject(target)) {
+    return { schema: target, reference };
+  }
+  const section = definitionSections.find((prefix) =>
+    reference.startsWith(prefix),
+  );
+  const otherSection = definitionSections.find((prefix) => prefix !== section);
+  if (section === undefined || otherSection === undefined) {
+    return undefined;
+  }
+  const alias = `${otherSection}${reference.slice(section.length)}`;
+  const aliasTarget = pointerTarget(root, alias);
+  return isObject(aliasTarget)
+    ? { schema: aliasTarget, reference: alias }
+    : undefined;
+}
+
+function countLookup(rendering: Rendering): void {
+  rendering.remainingLookups--;
+  if (rendering.remainingLookups < 0) {
+    throw new SchemaTooLarge();
+  }
+}
+
+/** How many definitions that only refer to another are followed before giving up. */
+const maximumReferenceHops = 64;
+
+/**
+ * Resolves local `$ref`s, as zod and MCP servers emit for shared definitions, following a
+ * definition that is itself a reference to another.
+ */
+function resolveReference(
+  node: JsonObject,
+  rendering: Rendering,
+  visiting: ReadonlySet<string>,
+): Resolved {
+  countLookup(rendering);
+  if (typeof node.$ref !== "string") {
     return { node, visiting };
   }
-  const siblings = withoutReference(node);
-  return {
-    node: { ...target, ...siblings },
-    visiting: new Set([...visiting, reference]),
-    ...(Object.keys(siblings).some((key) => shapeKeys.has(key))
-      ? {}
-      : { definition: reference }),
-  };
+  const chain = new Set(visiting);
+  let current = node;
+  let definition: string | undefined;
+  let reshaped = false;
+  let hops = 0;
+  for (
+    let reference: unknown = node.$ref;
+    typeof reference === "string";
+    reference = current.$ref
+  ) {
+    if (hops === maximumReferenceHops) {
+      return { node: current, visiting: chain, chainTooLong: true };
+    }
+    const target = reference.startsWith("#")
+      ? referenceTarget(rendering.root, reference)
+      : undefined;
+    if (target === undefined) {
+      return { node: current, visiting: chain, unresolvedReference: reference };
+    }
+    if (chain.has(target.reference)) {
+      return {
+        node: current,
+        visiting: chain,
+        recursiveReference: target.reference,
+      };
+    }
+    hops++;
+    countLookup(rendering);
+    const siblings = withoutReference(current);
+    reshaped ||= Object.keys(siblings).some((key) => shapeKeys.has(key));
+    current = { ...target.schema, ...siblings };
+    chain.add(target.reference);
+    definition = reshaped ? undefined : target.reference;
+  }
+  return { node: current, visiting: chain, definition };
 }
 
 function referenceName(reference: string): string {
@@ -314,6 +384,40 @@ function mergedAllOf(
   return merged;
 }
 
+/** The one JSON type a schema or all of its union's options have, if any. */
+function ownType(schema: JsonObject): string | undefined {
+  if (typeof schema.type === "string") {
+    return schema.type;
+  }
+  const types = new Set(
+    (variants(schema) ?? []).map((variant) =>
+      isObject(variant) && typeof variant.type === "string"
+        ? variant.type
+        : undefined,
+    ),
+  );
+  const [only] = types;
+  return types.size === 1 ? only : undefined;
+}
+
+/** Names a reference back into a definition being expanded. */
+function recursiveTypeName(reference: string, rendering: Rendering): string {
+  const name = referenceName(reference);
+  // Generated names, such as zod's `__schema0` for a recursive schema, mean nothing to users.
+  if (!name.startsWith("__")) {
+    return name;
+  }
+  const target = referenceTarget(rendering.root, reference);
+  const type = target === undefined ? undefined : ownType(target.schema);
+  if (type !== undefined) {
+    return type;
+  }
+  const path =
+    rendering.typedFields.get(reference) ??
+    rendering.listedDefinitions.get(reference)?.path;
+  return path === undefined ? "recursive value" : `same type as ${path}`;
+}
+
 function pluralType(type: string): string {
   if (type === "any") {
     return "values";
@@ -351,7 +455,23 @@ function typeName(
   }
   const resolved = resolveReference(schema, rendering, visiting);
   if (resolved.recursiveReference !== undefined) {
-    return referenceName(resolved.recursiveReference);
+    return recursiveTypeName(resolved.recursiveReference, rendering);
+  }
+  if (
+    resolved.unresolvedReference !== undefined ||
+    resolved.chainTooLong === true
+  ) {
+    const known = typeName(
+      withoutReference(resolved.node),
+      rendering,
+      resolved.visiting,
+      depth,
+    );
+    return known === "any"
+      ? resolved.unresolvedReference === undefined
+        ? "reference chain too long"
+        : `unresolved reference ${referenceName(resolved.unresolvedReference)}`
+      : known;
   }
   const node = mergedAllOf(resolved.node, rendering, resolved.visiting);
   const nestedName = (nested: unknown) =>
@@ -360,14 +480,21 @@ function typeName(
       maximumTypeLength,
     );
   const arrayName = () => {
-    if (node.items === undefined) {
-      return "array";
+    // Draft 2020-12 tuples, as zod emits, list their elements in `prefixItems` and any further
+    // elements in `items`; earlier drafts use an `items` list and `additionalItems`.
+    const prefixItems = nonEmptyList(node.prefixItems);
+    const elements = prefixItems ?? nonEmptyList(node.items);
+    if (elements !== undefined) {
+      const tuple = `tuple of ${namedValues(elements, nestedName, ", ")}`;
+      const rest =
+        prefixItems === undefined ? node.additionalItems : node.items;
+      return isObject(rest) && Object.keys(rest).length > 0
+        ? `${tuple}, then ${pluralType(nestedName(rest))}`
+        : tuple;
     }
-    if (Array.isArray(node.items)) {
-      const items: unknown[] = node.items;
-      return `tuple of ${namedValues(items, nestedName, ", ")}`;
-    }
-    return `array of ${pluralType(nestedName(node.items))}`;
+    return node.items === undefined || Array.isArray(node.items)
+      ? "array"
+      : `array of ${pluralType(nestedName(node.items))}`;
   };
   if (Object.hasOwn(node, "const")) {
     return literal(node.const);
@@ -515,6 +642,34 @@ function listedObjectVariants(
   ).length;
 }
 
+/** The definition a property refers back into while it is being listed, following array items. */
+function recursiveDefinition(
+  node: JsonObject,
+  rendering: Rendering,
+  visiting: ReadonlySet<string>,
+  nesting = 0,
+): string | undefined {
+  if (nesting > maximumNesting) {
+    return undefined;
+  }
+  const resolved = resolveReference(node, rendering, visiting);
+  if (resolved.recursiveReference !== undefined) {
+    return resolved.recursiveReference;
+  }
+  const merged = mergedAllOf(resolved.node, rendering, resolved.visiting);
+  const present = (variants(merged) ?? []).filter(
+    (variant) => !(isObject(variant) && variant.type === "null"),
+  );
+  const inner = isObject(merged.items)
+    ? merged.items
+    : present.length === 1 && isObject(present[0])
+      ? present[0]
+      : undefined;
+  return inner === undefined
+    ? undefined
+    : recursiveDefinition(inner, rendering, resolved.visiting, nesting + 1);
+}
+
 /** Whether listing a union option says more than "object". */
 function informativeVariant(
   variant: unknown,
@@ -583,17 +738,38 @@ function writeProperties(
    * Lists a field's or option's own fields one level deeper, or, for a shared definition already
    * listed, where its fields are.
    */
+  const writeListedAt = (listing: DefinitionListing | undefined): boolean => {
+    if (listing === undefined) {
+      return false;
+    }
+    write(rendering, [
+      plain(indentText(depth + 1)),
+      muted(`Same fields as ${listing.path}.`),
+    ]);
+    return true;
+  };
+  const listingOf = (definition: string | undefined) =>
+    definition === undefined
+      ? undefined
+      : rendering.listedDefinitions.get(definition);
   const writeFields = (source: FieldSource, sourcePath: string) => {
-    const listing =
-      source.definition === undefined
-        ? undefined
-        : rendering.listedDefinitions.get(source.definition);
-    if (listing !== undefined && (!listing.cut || depth + 1 >= listing.depth)) {
-      write(rendering, [
-        plain(indentText(depth + 1)),
-        muted(`Same fields as ${listing.path}.`),
-      ]);
+    const { definition } = source;
+    const earlier = listingOf(definition);
+    if (
+      earlier !== undefined &&
+      (!earlier.cut || depth + 1 >= earlier.depth) &&
+      writeListedAt(earlier)
+    ) {
       return;
+    }
+    // Recorded before listing, so references back into it from inside say where it is.
+    const listing: DefinitionListing = {
+      path: sourcePath,
+      depth: depth + 1,
+      cut: false,
+    };
+    if (definition !== undefined) {
+      rendering.listedDefinitions.set(definition, listing);
     }
     const linesBefore = rendering.lines.length;
     const cutoffsBefore = rendering.depthCutoffs;
@@ -604,15 +780,13 @@ function writeProperties(
       depth + 1,
       sourcePath,
     );
-    if (
-      source.definition !== undefined &&
-      rendering.lines.length > linesBefore
-    ) {
-      rendering.listedDefinitions.set(source.definition, {
-        path: sourcePath,
-        depth: depth + 1,
-        cut: rendering.depthCutoffs > cutoffsBefore,
-      });
+    listing.cut = rendering.depthCutoffs > cutoffsBefore;
+    if (definition !== undefined && rendering.lines.length === linesBefore) {
+      if (earlier === undefined) {
+        rendering.listedDefinitions.delete(definition);
+      } else {
+        rendering.listedDefinitions.set(definition, earlier);
+      }
     }
   };
   const alternatives = variants(objectSchema);
@@ -635,6 +809,17 @@ function writeProperties(
         : [],
     );
     for (const [name, property] of properties) {
+      const fieldPath = path === "" ? name : `${path}.${name}`;
+      const fieldReference =
+        isObject(property) && typeof property.$ref === "string"
+          ? referenceTarget(rendering.root, property.$ref)?.reference
+          : undefined;
+      if (
+        fieldReference !== undefined &&
+        !rendering.typedFields.has(fieldReference)
+      ) {
+        rendering.typedFields.set(fieldReference, fieldPath);
+      }
       const resolved = isObject(property)
         ? mergedAllOf(
             resolveReference(property, rendering, visiting).node,
@@ -658,7 +843,11 @@ function writeProperties(
           objectUnion(property, rendering, visiting))
         : undefined;
       if (fields !== undefined) {
-        writeFields(fields, path === "" ? name : `${path}.${name}`);
+        writeFields(fields, fieldPath);
+      } else if (isObject(property)) {
+        writeListedAt(
+          listingOf(recursiveDefinition(property, rendering, visiting)),
+        );
       }
     }
   }
@@ -755,6 +944,7 @@ export function schemaLines(schema: unknown): TextLine[] {
     remainingCharacters: maximumCharacters,
     listedDefinitions: new Map(),
     depthCutoffs: 0,
+    typedFields: new Map(),
     cutMerges: new WeakSet(),
   };
   try {
