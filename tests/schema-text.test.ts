@@ -203,7 +203,7 @@ test("malformed or odd schema parts render instead of throwing", () => {
   );
 });
 
-test("very long schemas are cut short with a count", () => {
+test("very long schemas are cut short with a note", () => {
   const properties = Object.fromEntries(
     Array.from({ length: 450 }, (_, index) => [
       `field${index}`,
@@ -212,7 +212,279 @@ test("very long schemas are cut short with a count", () => {
   );
   const lines = schemaLines({ type: "object", properties });
   assert.equal(lines.length, 401);
-  assert.equal(linesText(lines.slice(-1)), "… 50 more lines not shown.");
+  assert.equal(
+    linesText(lines.slice(-1)),
+    "… Schema too large to show in full.",
+  );
+});
+
+test("a shared definition's fields are listed once, and later uses say where", () => {
+  assert.equal(
+    render({
+      type: "object",
+      properties: {
+        home: { $ref: "#/$defs/Address" },
+        work: { $ref: "#/$defs/Address", description: "Office address" },
+        stops: {
+          type: "array",
+          items: {
+            oneOf: [
+              { $ref: "#/$defs/Address" },
+              { type: "object", properties: { lat: { type: "number" } } },
+            ],
+          },
+        },
+        billing: {
+          $ref: "#/$defs/Address",
+          properties: { vat: { type: "string" } },
+        },
+      },
+      $defs: {
+        Address: {
+          type: "object",
+          properties: { street: { type: "string" }, city: { type: "string" } },
+          required: ["street"],
+        },
+      },
+    }),
+    [
+      "home  object",
+      "  street  string, required",
+      "  city  string",
+      "work  object",
+      "  Office address",
+      "  Same fields as home.",
+      "stops  array of objects",
+      "  Option 1",
+      "    Same fields as home.",
+      "  Option 2",
+      "    lat  number",
+      "billing  object",
+      "  vat  string",
+    ].join("\n"),
+  );
+});
+
+/** Definitions D0 to D(levels - 1), each with `breadth` fields that all refer to the next. */
+function fannedOutDefinitions(breadth: number, levels: number) {
+  return Object.fromEntries(
+    Array.from({ length: levels }, (_, level) => [
+      `D${level}`,
+      {
+        type: "object",
+        properties: Object.fromEntries(
+          Array.from({ length: breadth }, (_, field) => [
+            `f${field}`,
+            level === levels - 1
+              ? { type: "string" }
+              : { $ref: `#/definitions/D${level + 1}` },
+          ]),
+        ),
+      },
+    ]),
+  );
+}
+
+test("references that fan out list each level once instead of every path", () => {
+  const lines = schemaLines({
+    type: "object",
+    properties: { query: { $ref: "#/definitions/D0" } },
+    definitions: fannedOutDefinitions(8, 10),
+  });
+  const text = linesText(lines);
+  assert.ok(lines.length < 200, `${lines.length} lines`);
+  assert.match(text, /^ {4}f1 {2}object\n {6}Same fields as query\.f0\.f0\.$/m);
+  assert.doesNotMatch(text, /Schema too large/);
+});
+
+test("a shared definition first listed past the depth limit is listed in full where there's room", () => {
+  let nested: Record<string, unknown> = {
+    type: "object",
+    properties: { addr: { $ref: "#/$defs/Address" } },
+  };
+  for (const name of ["g", "f", "e", "d", "c", "b"]) {
+    nested = { type: "object", properties: { [name]: nested } };
+  }
+  const text = render({
+    type: "object",
+    properties: { a: nested, billing: { $ref: "#/$defs/Address" } },
+    $defs: {
+      Address: {
+        type: "object",
+        properties: {
+          street: { type: "string" },
+          geo: { type: "object", properties: { lat: { type: "number" } } },
+        },
+      },
+    },
+  });
+  assert.match(
+    text,
+    /^billing {2}object\n {2}street {2}string\n {2}geo {2}object\n {4}lat {2}number$/m,
+  );
+});
+
+test("long enums, tuples, unions and text are shortened to fit a line", () => {
+  const values = Array.from({ length: 2000 }, (_, index) => `value-${index}`);
+  const properties = Object.fromEntries(
+    Array.from({ length: 400 }, (_, index) => [
+      `p${index}`,
+      { $ref: "#/definitions/Values" },
+    ]),
+  );
+  const schema = {
+    type: "object",
+    properties: {
+      tuple: {
+        type: "array",
+        items: Array.from({ length: 1000 }, () => ({ type: "string" })),
+      },
+      union: {
+        anyOf: Array.from({ length: 30 }, (_, index) => ({ const: index })),
+      },
+      described: { type: "string", description: "x".repeat(100_000) },
+      ...properties,
+    },
+    definitions: { Values: { enum: values } },
+  };
+  const started = performance.now();
+  const lines = linesText(schemaLines(schema)).split("\n");
+  assert.ok(performance.now() - started < 2_000);
+  assert.equal(
+    lines[0],
+    "tuple  tuple of string, string, string, string, string, string, string, string, string, string, … 990 more",
+  );
+  assert.equal(
+    lines[1],
+    "union  0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | … 20 more",
+  );
+  assert.match(lines.at(-2) ?? "", /^p\d+ {2}"value-0" \| .* \| … \d+ more$/);
+  assert.ok(lines.every((line) => line.length <= 400));
+});
+
+test("long chains of array items and allOf members are followed only so far", () => {
+  const length = 5_000;
+  const chain = (link: (next: string) => Record<string, unknown>) => ({
+    type: "object",
+    properties: { x: { $ref: "#/definitions/D0" } },
+    definitions: {
+      ...Object.fromEntries(
+        Array.from({ length }, (_, index) => [
+          `D${index}`,
+          link(`#/definitions/D${index + 1}`),
+        ]),
+      ),
+      [`D${length}`]: {
+        type: "object",
+        properties: { leaf: { type: "string" } },
+      },
+    },
+  });
+  const started = performance.now();
+  const items = render(
+    chain((next) => ({ type: "array", items: { $ref: next } })),
+  );
+  const allOf = render(
+    chain((next) => ({ allOf: [{ $ref: next }], properties: {} })),
+  );
+  assert.ok(performance.now() - started < 2_000);
+  assert.match(items, /^x {2}array of items of array of .*…$/);
+  assert.match(allOf, /^x {2}object$/m);
+});
+
+test("long type lists are named once each and stay listable", () => {
+  let schema: Record<string, unknown> = { type: "string" };
+  for (let level = 0; level < 3; level++) {
+    schema = {
+      type: [...Array<string>(2999).fill("array"), "null"],
+      items: schema,
+    };
+  }
+  assert.equal(
+    render({
+      type: "object",
+      properties: { a: schema, b: { type: ["string", "null", "string"] } },
+    }),
+    [
+      "a  array of items of array of items of array of strings | null | null | null",
+      "b  string | null",
+    ].join("\n"),
+  );
+});
+
+test("a huge const or default shared by many fields is shortened without stalling", () => {
+  const huge = "x".repeat(10_000_000);
+  const properties = Object.fromEntries(
+    Array.from({ length: 100 }, (_, index) => [
+      `p${index}`,
+      { $ref: "#/definitions/Huge" },
+    ]),
+  );
+  const started = performance.now();
+  const lines = schemaLines({
+    type: "object",
+    properties,
+    definitions: { Huge: { const: huge, default: { text: huge } } },
+  });
+  assert.ok(performance.now() - started < 2_000);
+  assert.equal(lines.length, 100);
+  assert.match(
+    linesText(lines.slice(0, 1)),
+    /^p0 {2}"x+"…, default \{"text":"x+…$/,
+  );
+});
+
+test("allOf members nested too deeply to follow are marked as left out", () => {
+  const length = 5_000;
+  const definitions: Record<string, unknown> = {
+    [`D${length}`]: {
+      type: "object",
+      properties: { leaf: { type: "string" } },
+    },
+  };
+  for (let index = 0; index < length; index++) {
+    definitions[`D${index}`] = {
+      allOf: [{ $ref: `#/definitions/D${index + 1}` }],
+      properties: { [`p${index}`]: { type: "string" } },
+    };
+  }
+  const lines = render({
+    type: "object",
+    properties: { x: { $ref: "#/definitions/D0" } },
+    definitions,
+  }).split("\n");
+  assert.equal(lines[0], "x  object");
+  assert.equal(lines.at(-2), "  p0  string");
+  assert.equal(lines.at(-1), "  …");
+});
+
+test("unions whose references fan out are cut short instead of stalling", () => {
+  const levels = 9;
+  const definitions = Object.fromEntries(
+    Array.from({ length: levels }, (_, level) => [
+      `U${level}`,
+      level === levels - 1
+        ? { type: "object", properties: { leaf: { type: "string" } } }
+        : {
+            anyOf: Array.from({ length: 6 }, () => ({
+              $ref: `#/definitions/U${level + 1}`,
+            })),
+          },
+    ]),
+  );
+  const schema = {
+    type: "object",
+    properties: { value: { $ref: "#/definitions/U0" } },
+    definitions,
+  };
+  const started = performance.now();
+  const lines = schemaLines(schema);
+  assert.ok(performance.now() - started < 2_000);
+  assert.equal(
+    linesText(lines.slice(0, 1)),
+    "OpenCode reported this input schema:",
+  );
+  assert.ok(lines.length <= 401);
 });
 
 test("self-referencing allOf members render instead of overflowing the stack", () => {
