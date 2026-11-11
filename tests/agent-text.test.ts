@@ -34,8 +34,10 @@ test("tools sharing a permission name it, and subagent access is shown where it 
     ),
     [
       "Checked as the edit permission.",
-      "build  primary or subagent: allowed",
-      "  denied for *.lock",
+      "Configured rules only. Kilo can still ask or deny at call time; saved approvals, hard limits, skill commands and sandbox escalation are not resolved here.",
+      "Kilo checks protected config paths separately; broad read grants do not automatically authorize sensitive .env files.",
+      "build  primary or subagent: allowed by configured rules",
+      "  denied by configured rules for *.lock",
       "  as a subagent: not offered to the model",
       "docs  subagent: not offered to the model",
       "Patterns match the call's input, such as a command or path; a later line wins.",
@@ -43,7 +45,7 @@ test("tools sharing a permission name it, and subagent access is shown where it 
   );
 });
 
-test("hidden custom agents are labelled, OpenCode's hidden agents are left out, and unreadable rules say so", () => {
+test("hidden custom agents are labelled, Kilo's hidden agents are left out, and unreadable rules say so", () => {
   assert.equal(
     render("read", [
       { name: "title", mode: "primary", native: true, hidden: true },
@@ -56,8 +58,10 @@ test("hidden custom agents are labelled, OpenCode's hidden agents are left out, 
       { name: "broken", mode: "primary", permission: "nope" },
     ]),
     [
+      "Configured rules only. Kilo can still ask or deny at call time; saved approvals, hard limits, skill commands and sandbox escalation are not resolved here.",
+      "Kilo checks protected config paths separately; broad read grants do not automatically authorize sensitive .env files.",
       "broken  primary: unknown, permissions couldn't be read",
-      "reviewer  subagent, hidden: allowed",
+      "reviewer  subagent, hidden: allowed by configured rules",
     ].join("\n"),
   );
 });
@@ -67,6 +71,31 @@ test("a tool no listed agent can run says so instead of rendering nothing", () =
     render("read", [
       { name: "title", mode: "primary", native: true, hidden: true },
     ]),
-    "OpenCode reported no agents that use tools.",
+    "Kilo reported no agents that use tools.",
   );
+});
+
+test("agent access distinguishes configuration from Kilo runtime authorization", () => {
+  const text = render("bash", [
+    { name: "build", mode: "primary", permission: [allowAll] },
+  ]);
+  assert.match(text, /allowed by configured rules/);
+  assert.match(text, /Kilo can still ask or deny at call time/);
+  assert.match(text, /saved approvals/);
+});
+
+test("read summaries explain Kilo's protected input checks", () => {
+  const text = render("read", [
+    { name: "build", mode: "primary", permission: [allowAll] },
+  ]);
+  assert.match(text, /\.env/);
+  assert.match(text, /protected config/);
+});
+
+test("agent manager summaries explain exact action approval requirements", () => {
+  const text = render("agent_manager", [
+    { name: "build", mode: "primary", permission: [allowAll] },
+  ]);
+  assert.match(text, /prompt, stop, move and answer/);
+  assert.match(text, /exact/);
 });

@@ -1,6 +1,6 @@
 # Tool Inspector
 
-Browse the tools available to OpenCode agents from the TUI: each tool's description, input schema and the agents that can use it. These guides describe the current repository; published packages may differ.
+Browse the tools available to Kilo agents from the TUI: each tool's description, input schema and the agents that can use it. These guides describe the current repository; published packages may differ.
 
 ## User documentation
 

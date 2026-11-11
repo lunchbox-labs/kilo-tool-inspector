@@ -1,12 +1,12 @@
 {
-  "name": "@lunchbox-labs/opencode-tool-inspector",
+  "name": "@lunchbox-labs/kilo-tool-inspector",
   "version": "0.2.3",
-  "description": "Inspect the tools available to OpenCode agents from the TUI",
+  "description": "Inspect the tools available to Kilo agents from the TUI",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lunchbox-labs/opencode-tool-inspector.git"
+    "url": "git+https://github.com/lunchbox-labs/kilo-tool-inspector.git"
   },
   "engines": {
     "node": ">=22.18.0"
@@ -33,16 +33,17 @@
     "prepack": "npm run build",
     "test:package": "npm run build && node --experimental-strip-types --test tests/package.integration.ts",
     "check:static": "concurrently --names typecheck,lint,format --kill-others-on-fail \"npm run typecheck\" \"npm run lint\" \"npm run format:check\"",
-    "prebuild": "node --input-type=module -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true });\""
+    "prebuild": "node --input-type=module -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true });\"",
+    "test:native": "npm run build && node tests/kilo.native.mjs"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/js": "10.0.1",
-    "@opencode-ai/plugin": "1.19.5",
-    "@opencode-ai/sdk": "1.19.5",
-    "@opentui/core": "0.4.5",
-    "@opentui/keymap": "0.4.5",
-    "@opentui/solid": "0.4.5",
+    "@kilocode/plugin": "7.8.27",
+    "@kilocode/sdk": "7.8.27",
+    "@opentui/core": "0.5.11",
+    "@opentui/keymap": "0.5.11",
+    "@opentui/solid": "0.5.11",
     "@types/node": "24.19.2",
     "concurrently": "10.0.6",
     "eslint": "10.14.0",
@@ -58,5 +59,6 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
-  }
+  },
+  "private": true
 }

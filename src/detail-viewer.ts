@@ -1,4 +1,4 @@
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui";
+import type { TuiPluginApi } from "@kilocode/plugin/tui";
 import type { TextLine, TextTone } from "./schema-text.ts";
 import type { ToolDetail } from "./tool-detail.ts";
 
@@ -10,7 +10,7 @@ type DialogElement = ReturnType<TuiPluginApi["ui"]["DialogAlert"]>;
 
 /** Renders a tool's detail sections in a keyboard-scrollable box inside the host's dialog frame. */
 export async function createDetailViewer(api: TuiPluginApi) {
-  // OpenCode supplies its shared runtime; importing this entrypoint stays Node-safe.
+  // Kilo supplies its shared runtime; importing this entrypoint stays Node-safe.
   const {
     BoxRenderable,
     RenderableEvents,

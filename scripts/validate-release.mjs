@@ -7,9 +7,9 @@ export function validateRelease(manifest, tag, lock) {
       "Remove the private publication guard only after release setup is approved.",
     );
   }
-  if (manifest.name !== "@lunchbox-labs/opencode-tool-inspector") {
+  if (manifest.name !== "@lunchbox-labs/kilo-tool-inspector") {
     throw new Error(
-      "The npm package name must be @lunchbox-labs/opencode-tool-inspector.",
+      "The npm package name must be @lunchbox-labs/kilo-tool-inspector.",
     );
   }
   if (
@@ -39,7 +39,7 @@ export function validateRelease(manifest, tag, lock) {
   }
   if (
     manifest.repository?.url !==
-    "git+https://github.com/lunchbox-labs/opencode-tool-inspector.git"
+    "git+https://github.com/lunchbox-labs/kilo-tool-inspector.git"
   ) {
     throw new Error(
       "The package repository must match the trusted publisher repository.",

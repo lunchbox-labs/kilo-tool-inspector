@@ -26,7 +26,7 @@ function textLines(text: string): TextLine[] {
 }
 
 /**
- * The detail view's content. The Agents section is left out when OpenCode's agents couldn't be
+ * The detail view's content. The Agents section is left out when Kilo's agents couldn't be
  * read.
  */
 export function toolDetail(
@@ -34,7 +34,7 @@ export function toolDetail(
   modelLabel: string | undefined,
   access?: ToolAgentAccess,
 ): ToolDetail {
-  const detailsMissing = "OpenCode reported only this tool's name.";
+  const detailsMissing = "Kilo reported only this tool's name.";
   return {
     title: tool.id,
     subtitle:

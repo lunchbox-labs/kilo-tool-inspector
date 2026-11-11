@@ -1,9 +1,6 @@
 import { EventEmitter } from "node:events";
 import { registerHooks } from "node:module";
-import type {
-  TuiDialogSelectProps,
-  TuiPluginApi,
-} from "@opencode-ai/plugin/tui";
+import type { TuiDialogSelectProps, TuiPluginApi } from "@kilocode/plugin/tui";
 import { BoxRenderable, TextRenderable } from "./opentui-double.ts";
 
 registerHooks({
