@@ -14,7 +14,7 @@ const rule = (
   pattern = "*",
 ): PermissionRuleInput => ({ permission, pattern, action });
 
-// A subset of OpenCode 1.19.5's starting rules for every agent.
+// A subset of Kilo 7.8.27's starting rules for every agent.
 const defaults = [
   rule("*", "allow"),
   rule("doom_loop", "ask"),
@@ -318,7 +318,7 @@ test("exceptions that no longer change the answer are dropped", () => {
   assert.deepEqual(agent.exceptions, []);
 });
 
-test("permission names written with backslashes match like OpenCode's", () => {
+test("permission names written with backslashes match like Kilo's", () => {
   const { agent } = accessFor("mcp/fetch", [
     {
       name: "agent",
@@ -411,7 +411,7 @@ test("unusable tool and agent entries are skipped", () => {
   );
 });
 
-test("permission names ignore case on Windows, as OpenCode does", (t) => {
+test("permission names ignore case on Windows, as Kilo does", (t) => {
   const platform = Object.getOwnPropertyDescriptor(process, "platform");
   assert.ok(platform !== undefined);
   t.after(() => {

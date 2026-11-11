@@ -106,7 +106,7 @@ async function start(sdk: unknown, options?: Parameters<typeof fakeHost>[1]) {
   return host;
 }
 
-test("/tools lists the tools OpenCode offers the configured model, without the internal placeholder", async () => {
+test("/tools lists the tools Kilo offers the configured model, without the internal placeholder", async () => {
   const sdk = client();
   const host = await start(sdk, { config: { model: "openai/gpt-5" } });
   assert.deepEqual(
@@ -200,11 +200,13 @@ test("choosing a tool shows its description and input, and Escape returns to it 
       "Input",
       "filePath  string, required\n  The absolute path to read\nlimit  integer, ≥ 0",
       "Agents",
+      "Configured rules only. Kilo can still ask or deny at call time; saved approvals, hard limits, skill commands and sandbox escalation are not resolved here.",
+      "Kilo checks protected config paths separately; broad read grants do not automatically authorize sensitive .env files.",
       [
-        "build  primary: allowed",
-        "  asks first for *.env",
-        "plan  primary: allowed",
-        "explore  subagent: allowed",
+        "build  primary: allowed by configured rules",
+        "  asks first by configured rules for *.env",
+        "plan  primary: allowed by configured rules",
+        "explore  subagent: allowed by configured rules",
         "Patterns match the call's input, such as a command or path; a later line wins.",
       ].join("\n"),
       "Description",
@@ -246,7 +248,7 @@ test("when tool details are unavailable the list falls back to names with a warn
   await host.settle();
   const detail = host.dialog();
   assert.equal(detail?.kind, "detail");
-  assert.match(detail.text, /OpenCode reported only this tool's name/);
+  assert.match(detail.text, /Kilo reported only this tool's name/);
 });
 
 test("with no model at all the registered tool names are listed", async () => {
@@ -278,7 +280,7 @@ test("a failed read closes the loading dialog with a toast instead of throwing",
     {
       variant: "warning",
       title: "Tool Inspector",
-      message: "Could not read tools from OpenCode: connection refused",
+      message: "Could not read tools from Kilo: connection refused",
       duration: 10_000,
     },
   ]);
@@ -396,7 +398,7 @@ test("a configured model whose provider isn't connected gives way to the provide
   );
 });
 
-test("the names-only warning keeps OpenCode's reason", async () => {
+test("the names-only warning keeps Kilo's reason", async () => {
   const host = await start(
     client({
       async list() {
@@ -438,7 +440,7 @@ test("connected MCP servers get a note that their tools aren't listed", async ()
     [
       [
         "info",
-        "Tools from MCP servers (github) aren't listed, because OpenCode only adds them when it runs a prompt.",
+        "Tools from MCP servers (github) aren't listed, because Kilo only adds them when it runs a prompt.",
       ],
     ],
   );
@@ -491,7 +493,7 @@ test("a tool's detail lists each agent's access, with the patterns that differ",
   const text = await openDetail(host, "bash");
   assert.match(
     text,
-    /Agents\nbuild {2}primary: allowed\nplan {2}primary: asks first\n {2}allowed for git log\*\nexplore {2}subagent: not offered to the model\n/,
+    /Agents\n[^\n]+\nbuild {2}primary: allowed by configured rules\nplan {2}primary: asks first by configured rules\n {2}allowed by configured rules for git log\*\nexplore {2}subagent: not offered to the model\n/,
   );
   assert.doesNotMatch(text, /compaction/);
   assert.deepEqual(host.toasts, []);
@@ -528,7 +530,7 @@ test("when agents can't be read the detail opens without them and one toast says
     [
       [
         "warning",
-        "Could not read OpenCode's agents (connection refused), so tool details don't show which agents can use each tool.",
+        "Could not read Kilo's agents (connection refused), so tool details don't show which agents can use each tool.",
       ],
     ],
   );
@@ -553,7 +555,7 @@ test("agents are still listed when the tool list has names only", async () => {
     { config: { model: "openai/gpt-5" } },
   );
   const text = await openDetail(host, "websearch");
-  assert.match(text, /Agents\nbuild {2}primary: allowed/);
+  assert.match(text, /Agents\n[^\n]+\nbuild {2}primary: allowed/);
 });
 
 test("subagents and agents of mode all are denied experimental.primary_tools", async () => {
@@ -573,7 +575,7 @@ test("subagents and agents of mode all are denied experimental.primary_tools", a
   const text = await openDetail(host, "bash");
   assert.match(
     text,
-    /review {2}primary or subagent: allowed\n {2}as a subagent: not offered to the model\ndocs {2}subagent: not offered to the model/,
+    /review {2}primary or subagent: allowed by configured rules\n {2}as a subagent: not offered to the model\ndocs {2}subagent: not offered to the model/,
   );
 });
 
@@ -587,10 +589,7 @@ test("an agents response that isn't a list or is an error leaves agents out with
     const host = await start(sdk, { config: { model: "openai/gpt-5" } });
     const text = await openDetail(host, "read");
     assert.doesNotMatch(text, /Agents/);
-    assert.match(
-      host.toasts[0]?.message ?? "",
-      /Could not read OpenCode's agents/,
-    );
+    assert.match(host.toasts[0]?.message ?? "", /Could not read Kilo's agents/);
   }
 });
 

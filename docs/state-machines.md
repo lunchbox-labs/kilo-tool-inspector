@@ -100,7 +100,7 @@ stateDiagram-v2
 
 `schemaLines` in `src/schema-text.ts` renders a tool's input schema each time its detail opens, synchronously, keeping a `Rendering` for that call: the lines written, the remaining character and reference-lookup budgets, how often a depth limit cut a listing short, the `allOf` merges that left members out, where each shared definition's fields were listed, and the first field that refers to each definition.
 
-- A missing or non-object schema says OpenCode reported no input schema.
+- A missing or non-object schema says Kilo reported no input schema.
 - Fields are written one line at a time. A line over 400 characters ends in "…", and enum, union, `type` and tuple element lists name their first few values and count the rest. Tuples read their elements from `prefixItems`, or an `items` list, and any further elements from `items` or `additionalItems`. Listings go 9 levels deep (depths 0 to 8) and write a "…" line below that, and array items, unions and `allOf` members are followed at most 64 levels, with "…" where `allOf` members were left out.
 - Writing a 401st line, or going over 100,000 characters or 50,000 reference lookups, throws `SchemaTooLarge`. If lines were written they end with "… Schema too large to show in full."; otherwise the raw schema shows, cut to 400 lines with a count of the rest. Any other error, such as a stack overflow, also shows the raw schema.
 - A root union lists each option's fields, under the same limits as any listing. A root with no fields to list shows `Input is <type>`, "Takes no input." or, for combinators that can't be listed, the raw schema.
@@ -122,7 +122,7 @@ stateDiagram-v2
 
 ### References
 
-Each `$ref` resolves to one of four outcomes. A reference that misses under `#/$defs/` or `#/definitions/` is retried under the other, since OpenCode 1.19 renames zod's `$defs` without rewriting references, and references are keyed by the spelling that resolved. A definition that is only a reference to another is followed.
+Each `$ref` resolves to one of four outcomes. A reference that misses under `#/$defs/` or `#/definitions/` is retried under the other, since Kilo 7.8.27 renames zod's `$defs` without rewriting references, and references are keyed by the spelling that resolved. A definition that is only a reference to another is followed.
 
 - **Resolved:** the target, with the reference's own keys over it, is rendered and the reference joins the set being expanded.
 - **Recursive:** the target is already being expanded. Its type is the definition's name, or for a generated name such as zod's `__schema0`, its own type, else "same type as <field>" for the first field that refers to it, else "recursive value". A field that refers back says "Same fields as <path>." where that definition is being listed.

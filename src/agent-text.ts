@@ -8,9 +8,9 @@ import type {
 import type { TextLine, TextSegment } from "./schema-text.ts";
 
 const actionLabels: Record<PermissionAction, string> = {
-  allow: "allowed",
-  ask: "asks first",
-  deny: "denied",
+  allow: "allowed by configured rules",
+  ask: "asks first by configured rules",
+  deny: "denied by configured rules",
 };
 
 const modeLabels: Record<AgentMode, string | undefined> = {
@@ -79,7 +79,7 @@ function agentLines(agent: AgentToolAccess): TextLine[] {
   return lines;
 }
 
-/** OpenCode's own hidden agents, such as `compaction` and `title`, never take tool calls. */
+/** Kilo's own hidden agents, such as `compaction` and `title`, never take tool calls. */
 function listed(agent: AgentToolAccess): boolean {
   return !(agent.native && agent.hidden);
 }
@@ -93,7 +93,7 @@ function primaryFirst(left: AgentToolAccess, right: AgentToolAccess): number {
 export function agentAccessLines(access: ToolAgentAccess): TextLine[] {
   const agents = access.agents.filter(listed).sort(primaryFirst);
   if (agents.length === 0) {
-    return [[muted("OpenCode reported no agents that use tools.")]];
+    return [[muted("Kilo reported no agents that use tools.")]];
   }
   const permissionNote: TextLine[] =
     access.permission === access.tool
@@ -113,5 +113,23 @@ export function agentAccessLines(access: ToolAgentAccess): TextLine[] {
         ],
       ]
     : [];
-  return [...permissionNote, ...agents.flatMap(agentLines), ...patternNote];
+  const runtimeNotes = [
+    "Configured rules only. Kilo can still ask or deny at call time; saved approvals, hard limits, skill commands and sandbox escalation are not resolved here.",
+    ...(access.permission === "read" || access.permission === "edit"
+      ? [
+          "Kilo checks protected config paths separately; broad read grants do not automatically authorize sensitive .env files.",
+        ]
+      : []),
+    ...(access.tool === "agent_manager"
+      ? [
+          "Agent manager prompt, stop, move and answer actions need exact action rules; broad grants can still ask first.",
+        ]
+      : []),
+  ];
+  return [
+    ...permissionNote,
+    ...runtimeNotes.map((note) => [muted(note)]),
+    ...agents.flatMap(agentLines),
+    ...patternNote,
+  ];
 }

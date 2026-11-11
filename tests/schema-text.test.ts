@@ -143,8 +143,8 @@ test("local references are followed and recursive ones are named instead of expa
   );
 });
 
-test("references into $defs resolve under definitions, as OpenCode serves zod tools", () => {
-  // OpenCode 1.19 renames zod's `$defs` to `definitions` but leaves the references as they were.
+test("references into $defs resolve under definitions, as Kilo serves zod tools", () => {
+  // Kilo 7.8.27 renames zod's `$defs` to `definitions` but leaves the references as they were.
   assert.equal(
     render({
       $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -334,7 +334,7 @@ test("schemas without properties say so instead of rendering nothing", () => {
   assert.equal(render({ type: "object", properties: {} }), "Takes no input.");
   assert.equal(render({ type: "object" }), "Takes no input.");
   assert.equal(render({ type: "string" }), "Input is string");
-  assert.equal(render(undefined), "OpenCode did not report an input schema.");
+  assert.equal(render(undefined), "Kilo did not report an input schema.");
 });
 
 test("names and types are toned separately for the viewer", () => {
@@ -396,7 +396,7 @@ test("a combinator root that can't be listed falls back to the raw schema", () =
   assert.equal(
     render(schema),
     [
-      "OpenCode reported this input schema:",
+      "Kilo reported this input schema:",
       JSON.stringify(schema, undefined, 2),
     ].join("\n"),
   );
@@ -717,7 +717,7 @@ test("unions whose references fan out are cut short instead of stalling", () => 
   assert.ok(performance.now() - started < 2_000);
   assert.equal(
     linesText(lines.slice(0, 1)),
-    "OpenCode reported this input schema:",
+    "Kilo reported this input schema:",
   );
   assert.ok(lines.length <= 401);
 });
@@ -725,7 +725,7 @@ test("unions whose references fan out are cut short instead of stalling", () => 
 test("self-referencing allOf members render instead of overflowing the stack", () => {
   assert.match(
     render({ allOf: [{ $ref: "#" }] }),
-    /^OpenCode reported this input schema:/,
+    /^Kilo reported this input schema:/,
   );
   assert.equal(
     render({

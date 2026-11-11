@@ -33,6 +33,7 @@ test(
       "dist/tui.js",
       "dist/tui.d.ts",
       "README.md",
+      "docs/wiki/Developer.md",
       "LICENSE",
       "package.json",
     ]) {
@@ -41,6 +42,7 @@ test(
     for (const path of paths) {
       assert.ok(
         path.startsWith("dist/") ||
+          path.startsWith("docs/wiki/") ||
           ["README.md", "LICENSE", "package.json"].includes(path),
         `Unexpected packed file: ${path}`,
       );
@@ -56,17 +58,17 @@ test(
         "--no-audit",
         "--no-fund",
         join(root, filename),
-        `@opencode-ai/plugin@${devDependencies["@opencode-ai/plugin"]}`,
+        `@kilocode/plugin@${devDependencies["@kilocode/plugin"]}`,
         `@types/node@${devDependencies["@types/node"]}`,
       ],
       { timeout: 120_000, signal: t.signal },
     );
-    // OpenCode resolves a package's server entry from ./server or its root export, so a
+    // Kilo resolves a package's server entry from ./server or its root export, so a
     // TUI-only package must export neither.
     await writeFile(
       join(root, "consumer.mjs"),
       `import assert from 'node:assert/strict';
-import tui from '@lunchbox-labs/opencode-tool-inspector/tui';
+import tui from '@lunchbox-labs/kilo-tool-inspector/tui';
 assert.equal(tui.id, 'tool-inspector');
 assert.equal(typeof tui.tui, 'function');
 assert.equal(Object.hasOwn(tui, 'server'), false);
@@ -77,7 +79,7 @@ await tui.tui({
   lifecycle: { signal: new AbortController().signal, onDispose() { return () => {}; } },
 }, undefined, {});
 assert.deepEqual(commands.map((command) => command.slashName), ['tools']);
-for (const specifier of ['@lunchbox-labs/opencode-tool-inspector', '@lunchbox-labs/opencode-tool-inspector/server']) {
+for (const specifier of ['@lunchbox-labs/kilo-tool-inspector', '@lunchbox-labs/kilo-tool-inspector/server']) {
   await assert.rejects(import(specifier), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }, specifier);
 }
 `,
@@ -89,8 +91,8 @@ for (const specifier of ['@lunchbox-labs/opencode-tool-inspector', '@lunchbox-la
     });
     await writeFile(
       join(root, "consumer.mts"),
-      `import type { TuiPluginModule } from '@opencode-ai/plugin/tui';
-import tui from '@lunchbox-labs/opencode-tool-inspector/tui';
+      `import type { TuiPluginModule } from '@kilocode/plugin/tui';
+import tui from '@lunchbox-labs/kilo-tool-inspector/tui';
 const module: TuiPluginModule = tui;
 console.log(module.id);
 `,
@@ -114,7 +116,7 @@ console.log(module.id);
       await readFile(
         join(
           root,
-          "node_modules/@lunchbox-labs/opencode-tool-inspector/package.json",
+          "node_modules/@lunchbox-labs/kilo-tool-inspector/package.json",
         ),
         "utf8",
       ),

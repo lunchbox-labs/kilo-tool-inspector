@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui";
+import type { TuiPluginApi } from "@kilocode/plugin/tui";
 import { detailText } from "./tui-harness.ts";
 import { BoxRenderable, ScrollBoxRenderable } from "./opentui-double.ts";
 import { createDetailViewer } from "../src/detail-viewer.ts";
@@ -73,7 +73,7 @@ test("the viewer fits short details and keeps long ones within the terminal", as
   assert.equal(layers.size, 0);
 });
 
-test("closing OpenCode tears down an open viewer", async () => {
+test("closing Kilo tears down an open viewer", async () => {
   const controller = new AbortController();
   const { api, renderer, layers } = viewerApi(controller.signal);
   const element = (await createDetailViewer(api))(detail);

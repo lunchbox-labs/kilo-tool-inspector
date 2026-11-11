@@ -218,7 +218,7 @@ function pointerTarget(root: JsonObject, reference: string): unknown {
 const definitionSections = ["#/$defs/", "#/definitions/"];
 
 /**
- * The schema a local reference names, and the reference as the schema spells it. OpenCode 1.19
+ * The schema a local reference names, and the reference as the schema spells it. Kilo 7.8.27
  * renames zod's `$defs` to `definitions` without rewriting the references to them, so a miss
  * under either name is retried under the other.
  */
@@ -884,7 +884,7 @@ function writeProperties(
 
 function rawSchemaLines(schema: JsonObject): TextLine[] {
   return [
-    [muted("OpenCode reported this input schema:")],
+    [muted("Kilo reported this input schema:")],
     ...JSON.stringify(schema, undefined, indentWidth)
       .split("\n")
       .map((line) => [muted(line)]),
@@ -935,7 +935,7 @@ function rootLines(rendering: Rendering, schema: JsonObject): TextLine[] {
  */
 export function schemaLines(schema: unknown): TextLine[] {
   if (!isObject(schema)) {
-    return [[muted("OpenCode did not report an input schema.")]];
+    return [[muted("Kilo did not report an input schema.")]];
   }
   const rendering: Rendering = {
     root: schema,

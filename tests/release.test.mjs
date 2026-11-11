@@ -12,10 +12,10 @@ import {
 } from "../scripts/release-ci.mjs";
 
 const release = {
-  name: "@lunchbox-labs/opencode-tool-inspector",
+  name: "@lunchbox-labs/kilo-tool-inspector",
   version: "1.2.3",
   repository: {
-    url: "git+https://github.com/lunchbox-labs/opencode-tool-inspector.git",
+    url: "git+https://github.com/lunchbox-labs/kilo-tool-inspector.git",
   },
   publishConfig: { access: "public" },
 };
@@ -58,8 +58,8 @@ test("release validation rejects private, provisional, mismatched, prerelease, a
     { private: "false" },
     { name: "package-name-tbd" },
     { name: "invalid name" },
-    { name: "opencode-tool-inspector" },
-    { name: "@other/opencode-tool-inspector" },
+    { name: "kilo-tool-inspector" },
+    { name: "@other/kilo-tool-inspector" },
     { version: "0.0.0" },
     { version: "1.2.3-beta.1" },
     { version: "01.2.3" },
@@ -125,7 +125,7 @@ test("a manual run on main verifies the package.json version before npm publicat
   assert.equal(verify.environment, undefined);
   assert.equal(
     versionJob.if.replace(/\s+/g, " ").trim(),
-    "github.repository == 'lunchbox-labs/opencode-tool-inspector' && github.event_name == 'workflow_dispatch'",
+    "github.repository == 'lunchbox-labs/kilo-tool-inspector' && github.event_name == 'workflow_dispatch'",
   );
   assert.equal(verify.if, versionJob.if);
   assert.equal(checks.if, versionJob.if);
