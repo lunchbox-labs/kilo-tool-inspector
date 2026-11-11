@@ -33,6 +33,7 @@ test(
       "dist/tui.js",
       "dist/tui.d.ts",
       "README.md",
+      "docs/wiki/Developer.md",
       "LICENSE",
       "package.json",
     ]) {
@@ -41,6 +42,7 @@ test(
     for (const path of paths) {
       assert.ok(
         path.startsWith("dist/") ||
+          path.startsWith("docs/wiki/") ||
           ["README.md", "LICENSE", "package.json"].includes(path),
         `Unexpected packed file: ${path}`,
       );
